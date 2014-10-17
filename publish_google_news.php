@@ -669,7 +669,7 @@ EOT;
             $numnews    = $options['numnews'] ? $options['numnews'] : 5;
             $desctype   = $options['desctype'];
 
-            $result = '<table><tr><th>Post</th><th>Source</th><th>Title</th><th>Date</th></tr><tr><th colspan=5>Body</th></tr>';
+            $result = '<table><tr><th>Post</th><th>Title</th><th>Date</th></tr><tr><th colspan=4>Body</th></tr>';
             $feedurl = 'http://news.google.com/news?output=rss';
 
             // This will also handle mixed mode text/image, when
@@ -706,39 +706,39 @@ EOT;
             }
             $rss->items = array_slice($rss->items, 0, $numnews);
             foreach ( $rss->items as $item ) {
-                error_log("Item keys:".print_r(array_keys($item), TRUE));
+                //error_log("Item keys:".print_r(array_keys($item), TRUE));
+                //error_log("Item title: ".print_r($item['title'], TRUE));
+                //error_log("Item summary: ".print_r($item['summary'], TRUE));
                 //error_log("Raw description:".print_r($description, TRUE));
                 $description = html_entity_decode($item['description'], ENT_QUOTES | ENT_HTML401);
                 //error_log(print_r(strip_tags($description,"<br>"), TRUE));
                 $desc_arr = explode("<br />", strip_tags($description,"<br>"));
                 //error_log("desc_arr=".print_r($desc_arr, TRUE));
                 $pdate = $item['pubdate'];
-                // Google's format is pretty inconsistent.  If the source name 
-                // is in arr1 and arr3, arr2 is title and arr4 is body
-                // If not, arr1 is the title and arr3 is body
-                if ( $desc_arr[1] == $desc_arr[3] ){
-                    unset($desc_arr[1]);
-                    $desc_arr = array_values($desc_arr);
+                // Google's format is pretty inconsistent. 
+                // Take longest line and call it the summary
+                $summary = "";
+                foreach ( $desc_arr as $line ){
+                    if (strlen($line) > strlen($summary)) {
+                        $summary = $line;
+                    }
                 }
-                $post_title = $desc_arr[1];
-                $post_body = $desc_arr[3];
-                $post_source = $desc_arr[2];
+                $post_title = $item['title'];
                 $post_link = $item['link'];
                 $posts = get_posts( array('name' => $post_title));
                 if (empty($posts)){
                     $form = '<form method="post" action="">
-    <input type="submit" name="submit" value="Post">
+   <input type="submit" name="submit" value="Post">
    <input type="hidden" name="publish_google_news-title" value="'.$post_title.'">
-   <input type="hidden" name="publish_google_news-body" value="'.$post_body.'">
+   <input type="hidden" name="publish_google_news-summary" value="'.$summary.'">
    <input type="hidden" name="publish_google_news-link" value="'.$post_link.'">
 </form>';
                 } else {
                     $form = '<a href="'.get_permalink($posts[0]->ID).'">Done</a>';
-                    error_log('Post found:'.$posts[0]->ID);
+                    //error_log('Post found:'.$posts[0]->ID);
                 }
-                $result .= "<tr><td>$form</td><td>$post_source</td><td>$post_title</td><td>$pdate</td></tr>".
-                           "<tr><td colspan=5>$post_body</td></tr>";
-                
+                $result .= "<tr><td>$form</td><td>$post_title</td><td>$pdate</td></tr>".
+                           "<tr><td colspan=5>$summary</td></tr>";
              } 
             return $result.'</table>';
         }
@@ -871,9 +871,9 @@ EOT;
             if ( isset($_POST['publish_google_news-title'])){
                 $name = $_POST['publish_google_news-title'];
                 $posts = get_posts( array('name' => $name));
-                error_log('Matching posts:'.print_r($posts,TRUE));
+                //error_log('Matching posts:'.print_r($posts,TRUE));
                 if (empty($posts)){
-                    $content = $_POST['publish_google_news-body'];
+                    $content = $_POST['publish_google_news-summary'];
                     $post = array(
                         'post_content' => $content,
                         'post_name' => $name,
@@ -881,9 +881,9 @@ EOT;
                         'comment_status' => 'closed',
                         'post_status' => 'publish',
                     );
-                    error_log('Attempting to post '.$name);
+                    //error_log('Attempting to post '.$name);
                     $post_id = wp_insert_post($post);
-                    error_log('Created post '.$post_id);
+                    //error_log('Created post '.$post_id);
                 }
                 
             }
