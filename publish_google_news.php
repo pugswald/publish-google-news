@@ -725,8 +725,11 @@ EOT;
                 }
                 $post_title = $item['title'];
                 $post_link = $item['link'];
-                $posts = get_posts( array('name' => $post_title));
-                if (empty($posts)){
+                $query_args = array( 's' => $post_title );
+                $query = new WP_Query( $query_args );
+                if ( $query->found_posts == 0 ){
+                //$posts = get_posts( array('name' => $post_title));
+                //if (empty($posts)){
                     $form = '<form method="post" action="">
    <input type="submit" name="submit" value="Post">
    <input type="hidden" name="publish_google_news-title" value="'.$post_title.'">
@@ -869,7 +872,8 @@ EOT;
         
         function post_news() {
             if ( isset($_POST['publish_google_news-title'])){
-                $name = $_POST['publish_google_news-title'];
+                $url = $this->shorten_url($_POST['publish_google_news-link']);
+                $name = $_POST['publish_google_news-title'].' - '.$url;
                 $posts = get_posts( array('name' => $name));
                 //error_log('Matching posts:'.print_r($posts,TRUE));
                 if (empty($posts)){
@@ -887,6 +891,26 @@ EOT;
                 }
                 
             }
+        }
+        
+        function shorten_url($url){
+            $content = '{"longUrl": "'.$url.'"}';
+            $opts = array(
+                'http'=>array(
+                    'method' => 'POST',
+                    'header' => "Content-Type: application/json\r\n"
+                        . "Content-Length: ".strlen($content)."\r\n",
+                    'content' => $content
+                )
+            );
+            //error_log('Shorten options: '.print_r($opts,TRUE));
+            $context = stream_context_create($opts);    
+            $json = file_get_contents('https://www.googleapis.com/urlshortener/v1/url', 
+                                      false, $context);
+            $obj = json_decode($json, true);
+            //error_log('Returned: '.print_r($obj,TRUE));
+            $short_url = $obj['id'];
+            return $short_url;
         }
     }
 
