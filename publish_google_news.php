@@ -669,7 +669,8 @@ EOT;
             $numnews    = $options['numnews'] ? $options['numnews'] : 5;
             $desctype   = $options['desctype'];
 
-            $result = '<table><tr><th>Post</th><th>Title</th><th>Date</th></tr><tr><th colspan=4>Body</th></tr>';
+            $result = '<div style="text-align:center;">Results for Query "'.$query.'"</div>'
+                . '<table><tr><th>Post</th><th>Title</th><th>Date</th></tr><tr><th colspan=4>Body</th></tr>';
             $feedurl = 'http://news.google.com/news?output=rss';
 
             // This will also handle mixed mode text/image, when
