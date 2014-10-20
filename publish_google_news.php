@@ -157,7 +157,8 @@ if ( ! class_exists('publish_google_news_plugin')) {
             add_filter('the_content', array(&$this, 'insert_news')); 
             add_action('admin_menu', array(&$this, 'admin_menu'));
             add_action('plugins_loaded', array(&$this, 'widget_init'));
-
+            add_action('wp_head', array(&$this, 'insert_meta'));
+            
             // Hook for theme coders/hackers
             add_action('publish_google_news', array(&$this, 'display_feed'));
 
@@ -205,7 +206,7 @@ if ( ! class_exists('publish_google_news_plugin')) {
                of the following special html comments or Shortcodes 
                anywhere in user content. Note that Shortcodes, i.e. the
                ones using square brackets, are only available in 
-               WordPress 2.5 and above.<
+               WordPress 2.5 and above.
             </p>
             <ul><li><b>&lt;--publish-google-news--&gt</b> (for default feed)</li>
                 <li><b>&lt;--publish-google-news#feedname--&gt</b></li>
@@ -255,6 +256,7 @@ EOT;
                 $newoptions['query']      = $_POST['publish_google_news-query'];
                 $newoptions['feedtype']   = $flipregions[$newoptions['region']].' : '.
                                             $flipnewstypes[$newoptions['newstype']];
+                $newoptions['default_img_url'] = $_POST['publish_google_news-img_url'];
 
                 if ( $alloptions['feeds'][$id] == $newoptions ) {
                     $text = 'No change...';
@@ -272,6 +274,18 @@ EOT;
                     $text = "Cache time changed to {$alloptions[cachetime]} seconds.";
                 } else {
                     $text = "No change in cache time...";
+                }
+                $mode = 'main';
+            } else if ( is_array($_POST) && $_POST['publish_google_news-options-imgurl-submit'] ) {
+                // TODO: There has to be a better way to handle plugin options, and
+                // ability to pick from library images
+                if ( $_POST['publish_google_news-options-imgurl'] != $alloptions['default_img_url'] ) {
+                    error_log('Default image url is '.$alloptions['default_img_url']);
+                    $alloptions['default_img_url'] = $_POST['publish_google_news-options-imgurl'];
+                    update_option('publish_google_news', $alloptions);
+                    $text = "Default image URL changed to {$alloptions[default_img_url]}.";
+                } else {
+                    $text = "No change in default image URL.";
                 }
                 $mode = 'main';
             }
@@ -500,6 +514,15 @@ EOT;
                 print '<td><input type="submit" value="Save  &raquo;"></td></tr>';
                 print ' </table>';
                 print '</form>'; 
+                // TODO: Better way to manage options
+                print ' <form method="post">';
+                print ' <table id="the-cachetime" cellspacing="3" cellpadding="3">';
+                print '<tr><td><b>Default image URL:</b></td>';
+                print '<td><input size="36" maxlength="256" id="publish_google_news-options-imgurl" name="publish_google_news-options-imgurl" type="text" value="'.$alloptions['default_img_url'].'" /></td>';
+                print '<input type="hidden" id="publish_google_news-options-imgurl-submit" name="publish_google_news-options-imgurl-submit" value="1" />';
+                print '<td><input type="submit" value="Save  &raquo;"></td></tr>';
+                print ' </table>';
+                print '</form>'; 
 
                 print '<h2>';
                 print _e('Information','publish_google_news');
@@ -668,7 +691,10 @@ EOT;
             $query      = $options['query'];
             $numnews    = $options['numnews'] ? $options['numnews'] : 5;
             $desctype   = $options['desctype'];
-
+            
+            $alloptions = get_option('publish_google_news');
+            $default_img_url = $alloptions['default_img_url'] ? $alloptions['default_img_url'] : "";
+            //error_log('Default img url is '.$default_img_url);
             $result = '<div style="text-align:center;">Results for Query "'.$query.'"</div>'
                 . '<table><tr><th>Post</th><th>Title</th><th>Date</th></tr><tr><th colspan=4>Body</th></tr>';
             $feedurl = 'http://news.google.com/news?output=rss';
@@ -699,6 +725,7 @@ EOT;
             define('MAGPIE_CACHE_AGE', $cachetime);
             define('MAGPIE_CACHE_ON', 1);
             define('MAGPIE_DEBUG', 1);
+            //error_log("Feed URL: ".print_r($feedurl, TRUE));
 
             $rss = fetch_rss($feedurl);
 
@@ -712,6 +739,20 @@ EOT;
                 //error_log("Item summary: ".print_r($item['summary'], TRUE));
                 //error_log("Raw description:".print_r($description, TRUE));
                 $description = html_entity_decode($item['description'], ENT_QUOTES | ENT_HTML401);
+                $dom = new DOMDocument;
+                libxml_use_internal_errors(true);
+                $dom->loadHTML($item['description']);
+                $img_url = $default_img_url;
+                foreach ($dom->getElementsByTagName('img') as $node){
+                    $node_src = $node->getAttribute('src');
+                    $width = $node->getAttribute('width');
+                    if ("" != $node_src && $width > 40){
+                        $img_url = $node_src;
+                        //error_log("Found IMG for ".$item['title']
+                        //          .": ".$node->getAttribute('src'));
+                        break;
+                    }
+                }
                 //error_log(print_r(strip_tags($description,"<br>"), TRUE));
                 $desc_arr = explode("<br />", strip_tags($description,"<br>"));
                 //error_log("desc_arr=".print_r($desc_arr, TRUE));
@@ -736,9 +777,10 @@ EOT;
    <input type="hidden" name="publish_google_news-title" value="'.$post_title.'">
    <input type="hidden" name="publish_google_news-summary" value="'.$summary.'">
    <input type="hidden" name="publish_google_news-link" value="'.$post_link.'">
+   <input type="hidden" name="publish_google_news-img_url" value="'.$img_url.'">
 </form>';
                 } else {
-                    $form = '<a href="'.get_permalink($posts[0]->ID).'">Done</a>';
+                    $form = '<a href="'.get_permalink($query->posts[0]->ID).'">Done</a>';
                     //error_log('Post found:'.$posts[0]->ID);
                 }
                 $result .= "<tr><td>$form</td><td>$post_title</td><td>$pdate</td></tr>".
@@ -889,6 +931,11 @@ EOT;
                     //error_log('Attempting to post '.$name);
                     $post_id = wp_insert_post($post);
                     //error_log('Created post '.$post_id);
+                    if ("" != $_POST['publish_google_news-img_url']) {
+                        // Set img url here
+                        //error_log('Adding meta og:image='.$_POST['publish_google_news-img_url']);
+                        add_post_meta($post_id, "og:image", $_POST['publish_google_news-img_url'], true);
+                    }
                 }
                 
             }
@@ -912,6 +959,16 @@ EOT;
             //error_log('Returned: '.print_r($obj,TRUE));
             $short_url = $obj['id'];
             return $short_url;
+        }
+        
+        function insert_meta() {
+            if ( is_single() && $post_id = get_queried_object_id() ){
+                $img_url = get_post_meta( $post_id, "og:image", true);
+                if ( "" != $img_url ){
+                    //error_log('Inserting img_url');
+                    printf( '<meta name="og:image" content="%s" />' . "\n\t", esc_attr($img_url) );
+                }
+            }
         }
     }
 
