@@ -966,7 +966,7 @@ EOT;
                 $img_url = get_post_meta( $post_id, "og:image", true);
                 if ( "" != $img_url ){
                     //error_log('Inserting img_url');
-                    printf( '<meta name="og:image" content="%s" />' . "\n\t", esc_attr($img_url) );
+                    printf( '<meta property="og:image" content="%s" />' . "\n\t", esc_attr($img_url) );
                 }
             }
         }
