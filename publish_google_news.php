@@ -288,6 +288,25 @@ EOT;
                     $text = "No change in default image URL.";
                 }
                 $mode = 'main';
+            } else if ( is_array($_POST) && $_POST['publish_google_news-options-autopost-submit'] ) {
+                // TODO: There has to be a better way to handle plugin options
+                $autopost = 0;
+                if ($_POST['publish_google_news-options-autopost']) {
+                    $autopost = 1;
+                }
+                if ( $autopost != $alloptions['autopost'] ) {
+                    $alloptions['autopost'] = $autopost;
+                    update_option('publish_google_news', $alloptions);
+                    if ( $autopost == 1 ) {
+                        $text = "Autoposting now enabled.";
+                    } else {
+                        $text = "Autoposting now disabled.";
+                    }
+                    update_option('publish_google_news', $alloptions);
+                } else {
+                    $text = "No change in autoposting status.";
+                }
+                $mode = 'main';
             }
 
             if ( $mode == 'newfeed' ) {
@@ -423,7 +442,7 @@ EOT;
                             }
                             print '</select></td>';
                             print '<td><input size="3" maxlength="3" id="publish_google_news-numnews" name="publish_google_news-numnews" type="text" value="'.$val['numnews'].'" /></td>';
-                            print '<td><input size="10" maxlength="50" id="publish_google_news-query" name="publish_google_news-query" type="text" value="'.$val['query'].'" /></td>';
+                            print '<td><input size="10" maxlength="50" id="publish_google_news-query" name="publish_google_news-query" type="text" value="'.htmlentities($val['query']).'" /></td>';
                             print '<td><input type="submit" value="Save  &raquo;">';
                             print "</td>";
                             print "<input type=\"hidden\" id=\"publish_google_news-id\" name=\"publish_google_news-id\" value=\"$edit_id\" />";
@@ -516,10 +535,22 @@ EOT;
                 print '</form>'; 
                 // TODO: Better way to manage options
                 print ' <form method="post">';
-                print ' <table id="the-cachetime" cellspacing="3" cellpadding="3">';
+                print ' <table id="the-imgurl" cellspacing="3" cellpadding="3">';
                 print '<tr><td><b>Default image URL:</b></td>';
                 print '<td><input size="36" maxlength="256" id="publish_google_news-options-imgurl" name="publish_google_news-options-imgurl" type="text" value="'.$alloptions['default_img_url'].'" /></td>';
                 print '<input type="hidden" id="publish_google_news-options-imgurl-submit" name="publish_google_news-options-imgurl-submit" value="1" />';
+                print '<td><input type="submit" value="Save  &raquo;"></td></tr>';
+                print ' </table>';
+                print '</form>'; 
+                print ' <form method="post">';
+                print ' <table id="the-autopost" cellspacing="3" cellpadding="3">';
+                print '<tr><td><b>Automatically post on load:</b></td>';
+                $checked = "";
+                if ($alloptions['autopost'] == true) {
+                    $checked = " checked";
+                }
+                print '<td><input type="checkbox" id="publish_google_news-options-autopost" name="publish_google_news-options-autopost" value="1"'.$checked.' /></td>';
+                print '<input type="hidden" id="publish_google_news-options-autopost-submit" name="publish_google_news-options-autopost-submit" value="1" />';
                 print '<td><input type="submit" value="Save  &raquo;"></td></tr>';
                 print ' </table>';
                 print '</form>'; 
@@ -554,6 +585,8 @@ EOT;
                 print 'differ from source to source. Google hasn\'t really done a great job with respect to formatting. ';
                 print 'Note specifically that a query filter will change the output slightly, as this is how Google wants it.</td></tr>';
                 print '<tr><td><b>Cache time</b></td><td>Minimum number of seconds that WordPress should cache a Publish Google News feed before fetching it again.</td></tr>';
+                print '<tr><td><b>Default Image URL</b></td><td>Image to use for missing news images.</td></tr>';
+                print '<tr><td><b>Autopost</b></td><td>Automatically post all items in the streams.</td></tr>';
                 print ' </table>';
                 print '</div>';
             }
@@ -679,7 +712,12 @@ EOT;
         // ************** The actual work ****************
         function get_feed(&$options, $cachetime) {
             // Handle posting before building list
-            $this->post_news();
+            if ( isset($_POST['publish_google_news-title'])){
+                $this->post_news($_POST['publish_google_news-title'],
+                                 $_POST['publish_google_news-summary'],
+                                 $_POST['publish_google_news-link'],
+                                 $_POST['publish_google_news-img_url']);
+            }
 
             if ( ! isset($options['region']) ) {
                 return 'Options not set, visit plugin configuation screen.'; 
@@ -770,15 +808,18 @@ EOT;
                 $query_args = array( 's' => $post_title );
                 $query = new WP_Query( $query_args );
                 if ( $query->found_posts == 0 ){
-                //$posts = get_posts( array('name' => $post_title));
-                //if (empty($posts)){
-                    $form = '<form method="post" action="">
+                    if ($alloptions['autopost'] == 1) {
+                        $post_id = $this->post_news($post_title, $summary, $post_link, $img_url);
+                        $form = '<a href="'.get_permalink($post_id).'">Done</a>';
+                    } else {
+                        $form = '<form method="post" action="">
    <input type="submit" name="submit" value="Post">
    <input type="hidden" name="publish_google_news-title" value="'.$post_title.'">
    <input type="hidden" name="publish_google_news-summary" value="'.$summary.'">
    <input type="hidden" name="publish_google_news-link" value="'.$post_link.'">
    <input type="hidden" name="publish_google_news-img_url" value="'.$img_url.'">
 </form>';
+                    }
                 } else {
                     $form = '<a href="'.get_permalink($query->posts[0]->ID).'">Done</a>';
                     //error_log('Post found:'.$posts[0]->ID);
@@ -913,32 +954,31 @@ EOT;
                           'feedtype' => 'U.S. : All');
         }
         
-        function post_news() {
-            if ( isset($_POST['publish_google_news-title'])){
-                $url = $this->shorten_url($_POST['publish_google_news-link']);
-                $name = $_POST['publish_google_news-title'].' - '.$url;
-                $posts = get_posts( array('name' => $name));
-                //error_log('Matching posts:'.print_r($posts,TRUE));
-                if (empty($posts)){
-                    $content = $_POST['publish_google_news-summary'];
-                    $post = array(
-                        'post_content' => $content,
-                        'post_name' => $name,
-                        'post_title' => $name,
-                        'comment_status' => 'closed',
-                        'post_status' => 'publish',
-                    );
-                    //error_log('Attempting to post '.$name);
-                    $post_id = wp_insert_post($post);
-                    //error_log('Created post '.$post_id);
-                    if ("" != $_POST['publish_google_news-img_url']) {
-                        // Set img url here
-                        //error_log('Adding meta og:image='.$_POST['publish_google_news-img_url']);
-                        add_post_meta($post_id, "og:image", $_POST['publish_google_news-img_url'], true);
-                    }
+        function post_news($post_title, $summary, $post_link, $img_url) {
+            $url = $this->shorten_url($post_link);
+            $name = $post_title.' - '.$url;
+            $posts = get_posts( array('name' => $name));
+            //error_log('Matching posts:'.print_r($posts,TRUE));
+            $post_id = 0;
+            if (empty($posts)){
+                $content = $summary;
+                $post = array(
+                    'post_content' => $content,
+                    'post_name' => $name,
+                    'post_title' => $name,
+                    'comment_status' => 'closed',
+                    'post_status' => 'publish',
+                );
+                //error_log('Attempting to post '.$name);
+                $post_id = wp_insert_post($post);
+                //error_log('Created post '.$post_id);
+                if ("" != $img_url) {
+                    // Set img url here
+                    //error_log('Adding meta og:image='.$img_url);
+                    add_post_meta($post_id, "og:image", $img_url, true);
                 }
-                
             }
+            return $post_id;
         }
         
         function shorten_url($url){
