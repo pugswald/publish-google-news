@@ -28,7 +28,7 @@ You should have received a copy of the GNU General Public License
 along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-include_once(ABSPATH . WPINC . '/rss.php');
+include_once(ABSPATH . WPINC . '/class-simplepie.php');
 
 global $publish_google_news_instance;
 
@@ -136,10 +136,10 @@ if ( ! class_exists('publish_google_news_plugin')) {
 
             // Form POSTs dealt with elsewhere
             if ( is_array($_POST) ) {
-                if ( $_POST['publish_google_news-widget-submit'] ) {
+                if ( isset($_POST['publish_google_news-widget-submit']) ) {
                     $tmp = $_POST['publish_google_news-widget-feed'];
                     $alloptions = get_option('publish_google_news');
-                    if ( $alloptions['widget-1'] != $tmp ) {
+                    if (  $alloptions['widget-1'] != $tmp ) {
                         if ( $tmp == '*DEFAULT*' ) {
                             $alloptions['widget-1'] = '';
                         } else {
@@ -147,9 +147,9 @@ if ( ! class_exists('publish_google_news_plugin')) {
                         }
                         update_option('publish_google_news', $alloptions);
                     }
-                } else if ( $_POST['publish_google_news-options-submit'] ) {
+                } else if ( isset($_POST['publish_google_news-options-submit']) ) {
                     // noop
-                } else if ( $_POST['publish_google_news-submit'] ) {
+                } else if ( isset($_POST['publish_google_news-submit']) ) {
                     // noop
                 }
             }
@@ -629,14 +629,14 @@ EOT;
 
             // Check for the required plugin functions. This will prevent fatal
             // errors occurring when you deactivate the dynamic-sidebar plugin.
-            if ( !function_exists('register_sidebar_widget') )
+            if ( !function_exists('wp_register_sidebar_widget') )
                 return;
 
-            register_widget_control('Publish Google News', 
+            wp_register_widget_control("publish_google_news", 'Publish Google News', 
                                    array(&$this, 'widget_control'), 200, 100);
 
             // wp_* has more features, presumably fixed at a later date
-            register_sidebar_widget('Publish Google News',
+            wp_register_sidebar_widget("publish_google_news", 'Publish Google News',
                                    array(&$this, 'widget_output'));
 
         }
@@ -758,28 +758,23 @@ EOT;
                 }
             }
 
-            // Using the WP RSS fetcher (MagpieRSS). It has serious
-            // GC problems though.
-            define('MAGPIE_CACHE_AGE', $cachetime);
-            define('MAGPIE_CACHE_ON', 1);
-            define('MAGPIE_DEBUG', 1);
             //error_log("Feed URL: ".print_r($feedurl, TRUE));
 
-            $rss = fetch_rss($feedurl);
-
-            if ( ! is_object($rss) ) {
-                return 'Publish Google News unavailable</ul>';
-            }
-            $rss->items = array_slice($rss->items, 0, $numnews);
-            foreach ( $rss->items as $item ) {
-                //error_log("Item keys:".print_r(array_keys($item), TRUE));
-                //error_log("Item title: ".print_r($item['title'], TRUE));
-                //error_log("Item summary: ".print_r($item['summary'], TRUE));
-                //error_log("Raw description:".print_r($description, TRUE));
-                $description = html_entity_decode($item['description'], ENT_QUOTES | ENT_HTML401);
+            $feed = new SimplePie();
+            $feed->set_feed_url($feedurl);
+            $feed->set_cache_location("/tmp");
+            $feed->init();
+            $feed->handle_content_type();
+            foreach ($feed->get_items(0, $numnews) as $item) {
+                #error_log("Item date: ".print_r($item->get_date(), TRUE));
+                #error_log("Item title: ".print_r($item->get_title(), TRUE));
+                #error_log("Item content: ".print_r($item->get_content(), TRUE));
+                #error_log("Item desc: ".print_r($item->get_description(), TRUE));
+                #$description = html_entity_decode($item->get_description(), ENT_QUOTES | ENT_HTML401);
+                #error_log("Decoded item description:".print_r($description, TRUE));
                 $dom = new DOMDocument;
                 libxml_use_internal_errors(true);
-                $dom->loadHTML($item['description']);
+                $dom->loadHTML($item->get_content());
                 $img_url = $default_img_url;
                 foreach ($dom->getElementsByTagName('img') as $node){
                     $node_src = $node->getAttribute('src');
@@ -792,9 +787,9 @@ EOT;
                     }
                 }
                 //error_log(print_r(strip_tags($description,"<br>"), TRUE));
-                $desc_arr = explode("<br />", strip_tags($description,"<br>"));
+                $desc_arr = explode("<br />", strip_tags($item->get_description(TRUE),"<br>"));
                 //error_log("desc_arr=".print_r($desc_arr, TRUE));
-                $pdate = $item['pubdate'];
+                $pdate = $item->get_date();
                 // Google's format is pretty inconsistent. 
                 // Take longest line and call it the summary
                 $summary = "";
@@ -803,8 +798,8 @@ EOT;
                         $summary = $line;
                     }
                 }
-                $post_title = $item['title'];
-                $post_link = $item['link'];
+                $post_title = $item->get_title();
+                $post_link = $item->get_link();
                 $query_args = array( 's' => $post_title );
                 $query = new WP_Query( $query_args );
                 if ( $query->found_posts == 0 ){
@@ -826,7 +821,8 @@ EOT;
                 }
                 $result .= "<tr><td>$form</td><td>$post_title</td><td>$pdate</td></tr>".
                            "<tr><td colspan=5>$summary</td></tr>";
-             } 
+                error_log($result, TRUE);
+            }
             return $result.'</table>';
         }
 
@@ -1013,7 +1009,7 @@ EOT;
     }
 
     // Instantiate
-    $publish_google_news_instance &= new publish_google_news_plugin();
+    $publish_google_news_instance = new publish_google_news_plugin();
 
 }
 ?>
